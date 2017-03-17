@@ -1,10 +1,10 @@
-# 失传的C结构体打包技艺 #
+# 失传的C结构体打包技艺
 
 作者：Eric S. Raymond
 
 原文链接：http://www.catb.org/esr/structure-packing/
 
-## 谁应阅读本文 ##
+## 谁应阅读本文
 
 本文探讨如何通过手工重新打包 C 结构体声明，来减小内存空间占用。你需要掌握基本的 C 语言知识，以理解本文所讲述的内容。
 
@@ -12,7 +12,7 @@
 
 最后，理解这项技术是通往其他 C 语言艰深话题的门径。若不掌握，就算不上高级 C 程序员。当你自己也能写出这样的文档，并且有能力明智地评价它之后，才称得上 C 语言大师。
 
-## 缘何写作本文 ##
+## 缘何写作本文
 
 2013 年底，我大量应用了一项 C 语言优化技术，这项技术是我早在二十余年前就已掌握的，但彼时之后，鲜有使用。
 
@@ -26,7 +26,7 @@
 
 然而这项技术在关键时刻仍颇具价值，并且只要内存容量有限，价值就始终存在。本文意在节省 C 程序员重新发掘这项技术所需的时间，让他们有精力关注更重要任务。
 
-## 对齐要求 ##
+## 对齐要求
 
 首先需要了解的是，对于现代处理器，C 编译器在内存中放置基本 C 数据类型的方式受到约束，以令内存的访问速度更快。
 
@@ -44,15 +44,15 @@
 
 使用 #pragma pack 的唯一理由是——假如你需让 C 语言的数据分布，与某种位级别的硬件或协议完全匹配（例如内存映射硬件端口），而违反通用对齐规则又不可避免。如果你处于这种困境，且不了解我所讲述的内容，那你已深陷泥潭，祝君好运。
 
-## 填充 ##
+## 填充
 
 我们来看一个关于变量在内存中分布的简单案例。思考形式如下的一系列变量声明，它们处在一个 C 模块的顶层。
 
-~~~C
+```C
 char *p;
 char c;
 int x;
-~~~
+```
 
 假如你对数据对齐一无所知，也许以为这 3 个变量将在内存中占据一段连续空间。也就是说，在 32 位系统上，一个 4 字节指针之后紧跟着 1 字节的 char，其后又紧跟着 4 字节 int。在 64 位系统中，唯一的区别在于指针将占用 8 字节。
 
@@ -60,66 +60,66 @@ int x;
 
 c 紧随其后，但接下来 x 的 4 字节对齐要求，将强制在分布中生成了一段空白，仿佛在这段代码中插入了第四个变量，如下所示。
 
-~~~C
+```C
 char *p;      /* 4 or 8 bytes */
 char c;       /* 1 byte */
 char pad[3];  /* 3 bytes */
 int x;        /* 4 bytes */
-~~~
+```
 
-字符数组 `pad[3]` 意味着在这个结构体中，有 3 个字节的空间被浪费掉了。老派术语将其称之为“废液（slop）”。
+字符数组 `pad[3]` 意味着在这个结构体中，有 3 个字节的空间被浪费掉了。老派术语将其称之为“废液（slop）”。填充的字节中的值都是未定义的，尤其是不能保证它们会被置零。
 
 如果 x 为 2 字节 short：
 
-~~~C
+```C
 char *p;
 char c;
 short x;
-~~~
+```
 
 在这个例子中，实际分布将会是：
 
-~~~C
+```C
 char *p;      /* 4 or 8 bytes */
 char c;       /* 1 byte */
 char pad[1];  /* 1 byte */
 short x;      /* 2 bytes */
-~~~
+```
 
 另一方面，如果 x 为 64 位系统中的 long：
 
-~~~C
+```C
 char *p;
 char c;
 long x;
-~~~
+```
 
 我们将得到：
 
-~~~C
+```C
 char *p;     /* 8 bytes */
 char c;      /* 1 byte */
 char pad[7]; /* 7 bytes */
 long x;      /* 8 bytes */
-~~~
+```
 
 若你一路仔细读下来，现在可能会思索，何不首先声明较短的变量？
 
-~~~C
+```C
 char c;
 char *p;
 int x;
-~~~
+```
 
 假如实际内存分布可以写成下面这样：
 
-~~~C
+```C
 char c;
 char pad1[M];
 char *p;
 char pad2[N];
 int x;
-~~~
+```
 
 那 `M` 与 `N` 分别为几何？
 
@@ -133,11 +133,11 @@ int x;
 
 倘若你希望这些变量占用的空间更少，那么可以交换 `x` 与 `c` 的次序。
 
-~~~C
+```C
 char *p;     /* 8 bytes */
 long x;      /* 8 bytes */
 char c;      /* 1 byte */
-~~~
+```
 
 通常，对于 C 代码中的少数标量变量（scalar variable），采用调换声明次序的方式能节省几个有限的字节，效果不算明显。而将这种技术应用于非标量变量（nonscalar variable）——尤其是结构体，则要有趣多了。
 
@@ -145,7 +145,7 @@ char c;      /* 1 byte */
 
 在下一节我们将会看到，这种情况对结构体数组并不适用。
 
-## 结构体的对齐和填充 ##
+## 结构体的对齐和填充
 
 通常情况下，结构体实例以其最宽的标量成员为基准进行对齐。编译器之所以如此，是因为此乃确保所有成员自对齐，实现快速访问最简便的方法。
 
@@ -155,35 +155,35 @@ char c;      /* 1 byte */
 
 考虑这个结构体：
 
-~~~C
+```C
 struct foo1 {
     char *p;
     char c;
     long x;
 };
-~~~
+```
 
 假定处在 64 位系统中，任何 `struct fool` 的实例都采用 8 字节对齐。不出所料，其内存分布将会像下面这样：
 
-~~~C
+```C
 struct foo1 {
     char *p;     /* 8 bytes */
     char c;      /* 1 byte */
     char pad[7]; /* 7 bytes */
     long x;      /* 8 bytes */
 };
-~~~
+```
 
 看起来仿佛与这些类型的变量单独声明别无二致。但假如我们将 `c` 放在首位，就会发现情况并非如此。
 
-~~~C
+```C
 struct foo2 {
     char c;      /* 1 byte */
     char pad[7]; /* 7 bytes */
     char *p;     /* 8 bytes */
     long x;      /* 8 bytes */
 };
-~~~
+```
 
 如果成员是互不关联的变量，`c` 便可能从任意位置起始，`pad` 的大小则不再固定。因为 `struct foo2` 的指针需要与其最宽的成员为基准对齐，这变得不再可能。现在 `c` 需要指针对齐，接下来填充的 7 个字节被锁定了。
 
@@ -193,7 +193,7 @@ struct foo2 {
 
 考虑 64 位 x86 或 ARM 系统中的这个例子：
 
-~~~C
+```C
 struct foo3 {
     char *p;     /* 8 bytes */
     char c;      /* 1 byte */
@@ -201,94 +201,145 @@ struct foo3 {
 
 struct foo3 singleton;
 struct foo3 quad[4];
-~~~
+```
 
 你以为 `sizeof(struct foo3)` 的值是 9，但实际是 16。它的跨步地址是 `(&p)[2]`。于是，在 `quad` 数组中，每个成员都有 7 字节的尾填充，因为下个结构体的首个成员需要在 ８ 字节边界上对齐。内存分布就好像这个结构是这样声明的：
 
-~~~C
+```C
 struct foo3 {
     char *p;     /* 8 bytes */
     char c;      /* 1 byte */
     char pad[7];
 };
-~~~
+```
 
 作为对比，思考下面的例子：
 
-~~~C
+```C
 struct foo4 {
     short s;     /* 2 bytes */
     char c;      /* 1 byte */
 };
-~~~
+```
 
 因为 `s` 只需要 2 字节对齐，跨步地址仅在 `c` 的1字节之后，整个 `struct foo4` 也只需要 1 字节的尾填充。形式如下：
 
-~~~C
+```C
 struct foo4 {
     short s;     /* 2 bytes */
     char c;      /* 1 byte */
     char pad[1];
 };
-~~~
+```
 
 `sizeof(struct foo4)` 的返回值将为 4。
 
-现在我们考虑位域（bitfields）。利用位域，你能声明比字符宽度更小的成员，低至１位，例如：
-
-~~~C
-struct foo5 {
-    short s;
-    char c;
-    int flip:1;
-    int nybble:4;
-    int septet:7;
-};
-~~~
-
-关于位域需要了解的是，它们是由字（或字节）层面的掩码和移位指令实现的。从编译器的角度来看，`struct foo5` 中的位域就像２字节、16 位的字符数组，只用到了其中 12 位。为了使结构体的长度是其最宽成员长度 `sizeof(short)` 的整数倍，接下来进行了填充。
-
-~~~C
-struct foo5 {
-    short s;       /* 2 bytes */
-    char c;        /* 1 byte */
-    int flip:1;    /* total 1 bit */
-    int nybble:4;  /* total 5 bits */
-    int septet:7;  /* total 12 bits */
-    int pad1:4;    /* total 16 bits = 2 bytes */
-    char pad2;     /* 1 byte */
-};
-~~~
-
 这是最后一个重要细节：如果你的结构体中含有结构体成员，内层结构体也要和最长的标量有相同的对齐。假如你写下了这段代码：
 
-~~~C
-struct foo6 {
+```C
+struct foo5 {
     char c;
-    struct foo5 {
+    struct foo5_inner {
         char *p;
         short x;
     } inner;
 };
-~~~
+```
 
 内层结构体成员 `char *p` 强迫外层结构体与内层结构体指针对齐一致。在 64 位系统中，实际的内存分布将类似这样：
 
-~~~C
-struct foo6 {
+```C
+struct foo5 {
     char c;           /* 1 byte */
     char pad1[7];     /* 7 bytes */
-    struct foo6_inner {
+    struct foo5_inner {
         char *p;      /* 8 bytes */
         short x;      /* 2 bytes */
         char pad2[6]; /* 6 bytes */
     } inner;
 };
-~~~
+```
 
 它启示我们，能通过重新打包节省空间。24 个字节中，有 13 个为填充，浪费了超过 50% 的空间！
 
-## 结构体成员重排 ##
+## 位域
+
+现在我们考虑位域（bitfields）。利用位域，你能声明比字符宽度更小的成员，低至１位，例如：
+
+```C
+struct foo6 {
+    short s;
+    char c;
+    int flip :1;
+    int nybble :4;
+    int septet :7;
+};
+```
+
+关于位域需要了解的是，它们是由字（或字节）层面的掩码和移位指令实现的，不能跨过字节的边界。假如变量没有跨过内存单元边界，C99 保证位域会被尽可能紧凑的打包。
+
+假设我们在 32 位的机器上，可能的内存分布如下：
+
+```C
+struct foo6 {
+    short s;       /* 2 bytes */
+    char c;        /* 1 byte */
+    int flip :1;    /* total 1 bit */
+    int nybble :4;  /* total 5 bits */
+    int pad1 :3;    /* pad to an 8-bit boundary */
+    int septet :7;  /* 7 bits */
+    int pad2 :25;   /* pad to 32 bits */
+};
+```
+
+但是这不是唯一的可能性，因为 C 语言的标准没有指明字节从低到高分配。所以内存布局可能也会像下面这样：
+
+```C
+struct foo6 {
+    short s;       /* 2 bytes */
+    char c;        /* 1 byte */
+    int pad1:3;    /* pad to an 8-bit boundary */
+    int flip:1;    /* total 1 bit */
+    int nybble:4;  /* total 5 bits */
+    int pad2:25;   /* pad to 32 bits */
+    int septet:7;  /* 7 bits */
+};
+```
+
+这就是，填充的字节可能会先于实际有效的字节而不是跟在有效的字节的后面。
+
+同样也要注意，C99 提到结构体填充的字节也不会保证置零。
+
+注意位域的基本类型理解为符号 (signedness)，跟位域的大小没有关系。这都是取决于编码者，`short flip :1` 跟 `long flip :1` 都是可以的，并且这些基本类型更改不会改变位域打包到存储单元的大小。
+
+带着好奇继续，检查 Wpadded 如果这个是可用的（例如：在 clang 情况下）。在奇怪硬件上的编译器，可能会用奇怪的方式去理解 C99 的标准；比较旧的编译器可能不会遵守这些规则。(English 是硬伤，翻译不好 😭😭)
+
+位域不能跨越机器字节边界的约束理解为，后面结构体的前两个打包到两个 32-bit 字中，跟你想的一样；第三个 (`struct foo9`) 占用了三个 32-bit 字，在最后一个字中之用到了 1 bit。
+
+```C
+struct foo7 {
+    int bigfield:31;      /* 32-bit word 1 begins */
+    int littlefield:1;
+};
+
+struct foo8 {
+    int bigfield1:31;     /* 32-bit word 1 begins */
+    int littlefield1:1;
+    int bigfield2:31;     /* 32-bit word 2 begins */
+    int littlefield2:1;
+};
+
+struct foo9 {
+    int bigfield1:31;     /* 32-bit word 1 begins */
+    int bigfield2:31;     /* 32-bit word 2 begins */
+    int littlefield1:1;
+    int littlefield2:1;   /* 32-bit word 3 begins */
+};
+```
+
+从另一个角度看，`struct foo8` 如果在 64 的机器上，它就会适合单个 64-bit 单元。
+
+## 结构体成员重排
 
 理解了编译器在结构体中间和尾部插入填充的原因与方式后，我们来看看如何榨出这些废液。此即结构体打包的技艺。
 
@@ -298,66 +349,66 @@ struct foo6 {
 
 因此，以简单的链表结构体为例：
 
-~~~C
-struct foo7 {
+```C
+struct foo10 {
     char c;
-    struct foo7 *p;
+    struct foo10 *p;
     short x;
 };
-~~~
+```
 
 将隐含的废液写明，形式如下：
 
-~~~C
-struct foo7 {
+```C
+struct foo10 {
     char c;         /* 1 byte */
     char pad1[7];   /* 7 bytes */
-    struct foo7 *p; /* 8 bytes */
+    struct foo10 *p; /* 8 bytes */
     short x;        /* 2 bytes */
     char pad2[6];   /* 6 bytes */
 };
-~~~
+```
 
 总共是 24 字节。如果按长度重排，我们得到：
 
-~~~C
-struct foo8 {
-    struct foo8 *p;
+```C
+struct foo11 {
+    struct foo11 *p;
     short x;
     char c;
 };
-~~~
+```
 
 考虑到自对齐，我们看到所有数据域之间都不需填充。因为有较严对齐要求（更长）成员的跨步地址对不太严对齐要求的（更短）成员来说，总是合法的对齐地址。重打包过的结构体只需要尾填充：
 
-~~~C
-struct foo8 {
-    struct foo8 *p; /* 8 bytes */
+```C
+struct foo11 {
+    struct foo11 *p; /* 8 bytes */
     short x;        /* 2 bytes */
     char c;         /* 1 byte */
     char pad[5];    /* 5 bytes */
 };
-~~~
+```
 
 重新打包将空间降为 16 字节。也许看起来不算很多，但假如这个链表的长度有 20 万呢？将会积少成多。
 
 注意，重新打包不能确保在所有情况下都能节省空间。将这项技术应用于更靠前 `struct foo6` 的那个例子，我们得到：
 
-~~~C
-struct foo9 {
-    struct foo9_inner {
+```C
+struct foo12 {
+    struct foo12_inner {
         char *p;      /* 8 bytes */
         int x;        /* 4 bytes */
     } inner;
     char c;           /* 1 byte */
 };
-~~~
+```
 
 将填充写明：
 
-~~~C
-struct foo9 {
-    struct foo9_inner {
+```C
+struct foo12 {
+    struct foo12_inner {
         char *p;      /* 8 bytes */
         int x;        /* 4 bytes */
         char pad[4];  /* 4 bytes */
@@ -365,11 +416,11 @@ struct foo9 {
     char c;           /* 1 byte */
     char pad[7];      /* 7 bytes */
 };
-~~~
+```
 
 结果还是 24 字节，因为 `c` 无法作为内层结构体的尾填充。要想节省空间，你需要得新设计数据结构。
 
-## 棘手的标量案例 ##
+## 棘手的标量案例
 
 只有在符号调试器能显示枚举类型的名称而非原始整型数字时，使用枚举来代替 `#define` 才是个好办法。然而，尽管枚举必定与某种整型兼容，但 Ｃ 标准却没有指明究竟是何种底层整型。
 
@@ -381,7 +432,7 @@ struct foo9 {
 
 最后，在 x86 Linux 系统中，double 有时会破自对齐规则的例；在结构体内，8 字节的 double 可能只要求 4 字节对齐，而在结构体外，独立的 double 变量又是 8 字节自对齐。这与编译器和选项有关。
 
-## 可读性与缓存局部性 ##
+## 可读性与缓存局部性
 
 尽管按尺寸重排是最简单的消除废液的方式，却不一定是正确的方式。还有两个问题需要考量：可读性与缓存局部性。
 
@@ -397,7 +448,7 @@ struct foo9 {
 
 是的，某些时候，这种做法与前文将相关数据放入与缓存段长度相同块的做法矛盾。多线程的确是个难题。缓存段弹跳和其他多线程优化问题是很高级的话题，值得单独为它们写份指导。这里我所能做的，只是让你了解有这些问题存在。
 
-## 其他打包技术 ##
+## 其他打包技术
 
 在为结构体瘦身时，重排序与其他技术结合在一起效果最好。例如结构体中有几个布尔标志，可以考虑将其压缩成 1 位的位域，然后把它们打包放在原本可能成为废液的地方。
 
@@ -409,18 +460,24 @@ struct foo9 {
 
 最冒险的打包方法是使用 union。假如你知道结构体中的某些域永远不会跟另一些域共同使用，可以考虑用 union 共享它们存储空间。不过请特别小心并用回归测试验证。因为如果分析出现一丁点儿错误，就会引发从程序崩溃到微妙数据损坏（这种情况糟得多）间的各种错误。
 
-## 工具 ##
+## 工具
 
 clang 编译器有个 Wpadded 选项，可以生成有关对齐和填充的信息。
 
 还有个叫 pahole 的工具，我自己没用过，但据说口碑很好。该工具与编译器协同工作，生成关于结构体填充、对齐和缓存段边界报告。
 
-## 证明和例外 ##
+## 证明和例外
 
 读者可以下载一段程序源代码 [packtest.c](http://www.catb.org/esr/structure-packing/packtest.c)，验证上文有关标量和结构体尺寸的结论。
 
 如果你仔细检查各种编译器、选项和罕见硬件的稀奇组合，会发现我前面提到的部分规则存在例外。越早期的处理器设计例外越常见。
 
 理解这些规则的第二个层次是，知其何时及如何会被打破。在我学习它们的日子里（ 1980 年代早期），我们把不理解这些规则的人称为“所有机器都是 VAX 综合症”的牺牲品。记住，世上所有电脑并非都是 PC。
+
+## 相关阅读
+
+[A Guide to Undefined Behavior in C and C++](http://blog.regehr.org/archives/213)
+[Time, Clock, and Calendar Programming In C](http://www.catb.org/esr/time-programming/)
+[Things Every Hacker Once Knew](http://www.catb.org/esr/faqs/things-every-hacker-once-knew/)
 
 
