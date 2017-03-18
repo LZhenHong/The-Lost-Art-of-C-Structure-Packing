@@ -477,7 +477,9 @@ clang 编译器有个 Wpadded 选项，可以生成有关对齐和填充的信�
 ## 相关阅读
 
 [A Guide to Undefined Behavior in C and C++](http://blog.regehr.org/archives/213)
+
 [Time, Clock, and Calendar Programming In C](http://www.catb.org/esr/time-programming/)
+
 [Things Every Hacker Once Knew](http://www.catb.org/esr/faqs/things-every-hacker-once-knew/)
 
 
